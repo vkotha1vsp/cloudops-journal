@@ -26,7 +26,7 @@ export function validateUpload(fileName: string, mimeType: string, sizeBytes: nu
   if (/[\\/]/.test(fileName) || fileName.length > 200) throw new HttpError(400, "Invalid file name");
 }
 
-export async function createUpload(ownerId: string, input: { fileName: string; mimeType: string; sizeBytes: number; pageId?: string }) {
+export async function createUpload(ownerId: string, input: { fileName: string; mimeType: string; sizeBytes: number; pageId?: string; labId?: string }) {
   const e = env();
   if (!e.S3_ATTACHMENTS_BUCKET) throw new HttpError(503, "Attachments are not configured (S3_ATTACHMENTS_BUCKET is empty)");
   validateUpload(input.fileName, input.mimeType, input.sizeBytes, e.MAX_UPLOAD_MB);
@@ -34,10 +34,14 @@ export async function createUpload(ownerId: string, input: { fileName: string; m
     const page = await db().journalPage.findFirst({ where: { id: input.pageId, ownerId }, select: { id: true } });
     if (!page) throw notFound("Page");
   }
+  if (input.labId) {
+    const lab = await db().lab.findFirst({ where: { id: input.labId, ownerId }, select: { id: true } });
+    if (!lab) throw notFound("Lab");
+  }
   const ext = input.fileName.slice(input.fileName.lastIndexOf(".")).toLowerCase();
   const key = `users/${ownerId}/${randomUUID()}${ext}`;
   const attachment = await db().attachment.create({
-    data: { ownerId, pageId: input.pageId, s3Key: key, fileName: input.fileName, mimeType: input.mimeType, sizeBytes: input.sizeBytes },
+    data: { ownerId, pageId: input.pageId, labId: input.labId, s3Key: key, fileName: input.fileName, mimeType: input.mimeType, sizeBytes: input.sizeBytes },
   });
   const uploadUrl = await presignPut(key, input.mimeType, input.sizeBytes);
   return { attachmentId: attachment.id, uploadUrl, headers: { "Content-Type": input.mimeType } };

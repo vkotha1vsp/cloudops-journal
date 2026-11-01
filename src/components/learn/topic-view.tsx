@@ -15,6 +15,7 @@ import { api } from "@/lib/client";
 import { cn, relativeTime } from "@/lib/utils";
 import { emptyDoc, type TiptapNode } from "@/domain/tiptap";
 import { TOPIC_SECTIONS, type SectionKey } from "@/domain/topic-sections";
+import { TopicDiagrams, type DiagramRef } from "@/components/architecture/topic-diagrams";
 
 type HistoryEntry = { at: string; section: string; chars: number };
 type ContentKey = Exclude<SectionKey, "history">;
@@ -28,6 +29,8 @@ export type TopicViewData = {
   sections: Partial<Record<ContentKey, TiptapNode>> & { history?: HistoryEntry[] };
   updatedAt: string;
   pages: { id: string; title: string; status: string; updatedAt: string }[];
+  diagrams: DiagramRef[];
+  labs: { id: string; title: string; status: string }[];
   progress: Progress;
 };
 
@@ -182,6 +185,8 @@ export function TopicView({ topic, bookmarked }: { topic: TopicViewData; bookmar
               )}
             </div>
           ) : (
+            <>
+            {active === "diagram" || active === "flow" ? <TopicDiagrams items={topic.diagrams} mode={active} topicId={topic.id} /> : null}
             <RichEditor
               key={active}
               content={docs.current[active as ContentKey] ?? emptyDoc()}
@@ -197,6 +202,7 @@ export function TopicView({ topic, bookmarked }: { topic: TopicViewData; bookmar
                 queue({ [`section:${active}`]: doc });
               }}
             />
+            </>
           )}
         </div>
 
@@ -218,8 +224,33 @@ export function TopicView({ topic, bookmarked }: { topic: TopicViewData; bookmar
             </ul>
             <NewPageButton topicId={topic.id} title={`${title} notes`} label="New linked page" variant="outline" size="sm" className="mt-2 w-full" />
           </div>
-          <div className="rounded-xl border border-dashed p-4 text-xs text-muted-foreground">
-            Architecture diagrams (Phase 2) and labs (Phase 5) will link here too. A topic can reference many of each.
+          <div className="rounded-xl border bg-card p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Architectures</h3>
+              <Badge variant="secondary">{topic.diagrams.length}</Badge>
+            </div>
+            <ul className="space-y-1 text-sm">
+              {topic.diagrams.map((d) => (
+                <li key={`${d.kind}:${d.id}`}>
+                  <Link href={d.kind === "concept" ? `/studio/concepts/${d.id}` : `/studio/${d.id}`} className="block truncate rounded-md px-1 py-1 hover:bg-muted">
+                    {d.kind === "concept" ? <span className="mr-1 text-xs text-muted-foreground">Concept</span> : null}{d.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <Button variant="outline" size="sm" className="mt-2 w-full" asChild><Link href={`/studio/new?topic=${topic.id}`}>New diagram for this topic</Link></Button>
+          </div>
+          <div className="rounded-xl border bg-card p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Labs</h3>
+              <Badge variant="secondary">{topic.labs.length}</Badge>
+            </div>
+            <ul className="space-y-1 text-sm">
+              {topic.labs.map((l) => (
+                <li key={l.id}><Link href={`/labs/${l.id}`} className="flex items-center justify-between gap-2 rounded-md px-1 py-1 hover:bg-muted"><span className="truncate">{l.title}</span><span className="text-[10px] uppercase text-muted-foreground">{l.status.replace("_", " ").toLowerCase()}</span></Link></li>
+              ))}
+            </ul>
+            <Button variant="outline" size="sm" className="mt-2 w-full" asChild><Link href={`/labs?topic=${topic.id}`}>Start a lab</Link></Button>
           </div>
         </aside>
       </div>

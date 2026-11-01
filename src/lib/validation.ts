@@ -66,4 +66,5 @@ export const presignSchema = z.object({
   mimeType: z.string().max(120),
   sizeBytes: z.number().int().positive(),
   pageId: id.optional(),
+  labId: id.optional(),
 });

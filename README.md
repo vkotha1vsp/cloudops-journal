@@ -1,11 +1,11 @@
 # CloudOps Journal
 
 A self-hosted DevOps learning platform: a private technical journal, AWS / Azure / DevOps knowledge trees,
-and (in later phases) an architecture studio, animated request-flow simulations, labs, a troubleshooting
-knowledge base and ChatGPT document import. It runs entirely in your own AWS account on your own domain.
+an interactive architecture studio, animated request-flow simulations, hands-on labs, a troubleshooting
+knowledge base, ChatGPT document import, learning roadmaps and an optional AI assistant grounded in your journal.
+It runs entirely in your own AWS account on your own domain.
 
-**Status: Phase 1 complete** (authentication, dashboard, database, journal editor, knowledge trees, search)
-plus production AWS infrastructure and CI/CD.
+**Status: Phases 1–6 delivered** (Phase 6 hosting is live on EC2 + CodeBuild; the ECS Fargate Terraform path is also included).
 
 | Doc | What's in it |
 |---|---|
@@ -14,6 +14,8 @@ plus production AWS infrastructure and CI/CD.
 | [docs/03-DEPLOYMENT.md](docs/03-DEPLOYMENT.md) | Deploy to AWS: ECS Fargate (Terraform) or a single EC2 |
 | [docs/04-OPERATIONS.md](docs/04-OPERATIONS.md) | Backups, recovery procedures, maintenance, cleanup |
 | [docs/05-EC2-CODEBUILD.md](docs/05-EC2-CODEBUILD.md) | **Active deploy path:** GitHub Actions → CodeBuild → ECR → EC2 behind ALB/ACM with Cognito login |
+| [docs/06-CONSOLE-SETUP.md](docs/06-CONSOLE-SETUP.md) | The same stack built by hand in the AWS Console |
+| [docs/07-phases-2-5.md](docs/07-phases-2-5.md) | Studio, animated flows, import, AI assistant, labs, troubleshooting, roadmaps; how to update the live site and enable Bedrock |
 
 ## Stack
 
@@ -22,7 +24,8 @@ PostgreSQL 16 + Prisma 7 · NextAuth with Amazon Cognito · S3 presigned uploads
 Terraform (VPC, ALB, ACM, Route 53, ECS Fargate, RDS, S3, Cognito, Secrets Manager, CloudWatch) ·
 GitHub Actions with OIDC.
 
-React Flow, Mermaid, Framer Motion and Amazon Bedrock join in Phases 2–4, when the features that use them land.
+React Flow (XYFlow) for diagrams, Framer Motion for flow animation, Mermaid (strict mode) for diagram-as-code,
+mammoth / unpdf / marked / sanitize-html for imports, Amazon Bedrock (optional) for the assistant.
 
 ## Run locally
 
@@ -78,7 +81,7 @@ private encrypted S3 with 5-minute presigned URLs, RDS in isolated subnets with 
 secrets only in Secrets Manager / environment, least-privilege task role, and GitHub deploys via OIDC
 (no stored AWS keys). Nothing in the app creates or changes AWS infrastructure.
 
-## Next: Phase 2
+## What's next
 
-Architecture Studio: service palette and natural-language input → typed graph (`src/domain/architecture/graph.ts`,
-already validated by tests) → React Flow editor with VPC/AZ/subnet boundaries, undo/redo, versions and export.
+Ideas beyond the spec: semantic (embedding) search alongside full-text, publishing selected pages read-only,
+and an approved-integration API for pushing structured pages into the journal.

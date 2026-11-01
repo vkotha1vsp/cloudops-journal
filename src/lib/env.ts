@@ -29,6 +29,13 @@ const schema = z
     AWS_REGION: z.string().default("us-east-1"),
     S3_ATTACHMENTS_BUCKET: z.string().optional().default(""),
     MAX_UPLOAD_MB: z.coerce.number().int().positive().max(200).default(25),
+    /** Optional AI assistant: none | bedrock (uses the instance/task role) | openai (needs OPENAI_API_KEY). */
+    AI_PROVIDER: z.enum(["none", "bedrock", "openai"]).default("none"),
+    BEDROCK_MODEL_ID: z.string().optional().default(""),
+    BEDROCK_REGION: z.string().optional().default(""),
+    OPENAI_API_KEY: z.string().optional().default(""),
+    OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+    AI_DAILY_LIMIT: z.coerce.number().int().positive().max(5000).default(100),
   })
   .superRefine((env, ctx) => {
     const cognito = Boolean(env.COGNITO_CLIENT_ID && env.COGNITO_ISSUER);
@@ -40,6 +47,12 @@ const schema = z
     }
     if (env.AUTH_DEV_LOGIN && env.AUTH_DEV_PASSWORD.length < 8) {
       ctx.addIssue({ code: "custom", message: "AUTH_DEV_PASSWORD must be at least 8 characters." });
+    }
+    if (env.AI_PROVIDER === "bedrock" && !env.BEDROCK_MODEL_ID) {
+      ctx.addIssue({ code: "custom", message: "AI_PROVIDER=bedrock needs BEDROCK_MODEL_ID (a model or inference profile ID enabled in your account)." });
+    }
+    if (env.AI_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
+      ctx.addIssue({ code: "custom", message: "AI_PROVIDER=openai needs OPENAI_API_KEY." });
     }
     if (env.ALLOWED_EMAILS.length === 0) {
       ctx.addIssue({ code: "custom", message: "ALLOWED_EMAILS must list at least one email." });

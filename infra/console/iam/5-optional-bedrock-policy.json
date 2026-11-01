@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeChosenBedrockModelOnly",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/REPLACE_WITH_MODEL_ID",
+        "arn:aws:bedrock:*:REPLACE_WITH_ACCOUNT_ID:inference-profile/REPLACE_WITH_INFERENCE_PROFILE_ID"
+      ]
+    }
+  ]
+}

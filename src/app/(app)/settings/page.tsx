@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { cognitoEnabled, env } from "@/lib/env";
 import { getUser } from "@/server/users";
+import { aiStatus } from "@/server/ai";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -10,6 +11,7 @@ export default async function SettingsPage() {
   const session = await requireUser();
   const user = await getUser(session.id);
   const e = env();
+  const ai = aiStatus();
   const rows: [string, React.ReactNode][] = [
     ["Signed in as", user?.email],
     ["Member since", user?.createdAt.toLocaleDateString()],
@@ -17,7 +19,7 @@ export default async function SettingsPage() {
     ["Attachments (S3)", e.S3_ATTACHMENTS_BUCKET ? <Badge variant="success">{e.S3_ATTACHMENTS_BUCKET}</Badge> : <Badge variant="outline">Not configured</Badge>],
     ["Max upload size", `${e.MAX_UPLOAD_MB} MB`],
     ["Region", e.AWS_REGION],
-    ["AI provider", <Badge key="ai" variant="outline">Phase 4 (Amazon Bedrock)</Badge>],
+    ["AI provider", <Badge key="ai" variant="outline">{ai.enabled ? `${ai.provider} · ${ai.model}` : "Off (set AI_PROVIDER)"}</Badge>],
   ];
   return (
     <div className="mx-auto max-w-3xl space-y-6">

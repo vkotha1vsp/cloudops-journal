@@ -26,6 +26,8 @@ export async function getTopic(ownerId: string, id: string) {
       progress: { where: { ownerId } },
       pages: { select: { id: true, title: true, updatedAt: true, status: true }, orderBy: { updatedAt: "desc" } },
       references: { orderBy: { createdAt: "asc" } },
+      diagrams: { select: { id: true, title: true }, orderBy: { updatedAt: "desc" } },
+      labs: { select: { id: true, title: true, status: true }, orderBy: { updatedAt: "desc" } },
     },
   });
   if (!topic) throw notFound("Topic");
@@ -120,4 +122,14 @@ export async function setProgress(ownerId: string, topicId: string, input: { sta
     create: { ownerId, topicId, status: input.status, confidence: input.confidence, ...schedule },
     update: { status: input.status, confidence: input.confidence, ...schedule },
   });
+}
+
+/** Topic options for pickers, grouped "AWS · Load Balancing". */
+export async function topicOptions(ownerId: string) {
+  const topics = await db().topic.findMany({
+    where: { ownerId },
+    select: { id: true, title: true, category: { select: { name: true, track: true } } },
+    orderBy: [{ category: { track: "asc" } }, { category: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+  });
+  return topics.map((t) => ({ id: t.id, title: t.title, group: `${t.category.track} · ${t.category.name}` }));
 }

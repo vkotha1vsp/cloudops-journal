@@ -5,6 +5,7 @@ import { getTopic } from "@/server/topics";
 import { isBookmarked, recordView } from "@/server/bookmarks";
 import { slugFromTrack } from "@/domain/tracks";
 import { TopicView } from "@/components/learn/topic-view";
+import { conceptsForTopic } from "@/domain/architecture/library";
 
 export default async function TopicPage({ params }: { params: Promise<{ track: string; id: string }> }) {
   const user = await requireUser();
@@ -34,6 +35,11 @@ export default async function TopicPage({ params }: { params: Promise<{ track: s
         sections: topic.sections,
         updatedAt: topic.updatedAt.toISOString(),
         pages: topic.pages.map((p) => ({ id: p.id, title: p.title, status: p.status, updatedAt: p.updatedAt.toISOString() })),
+        diagrams: [
+          ...conceptsForTopic(topic.title).map((c) => ({ kind: "concept" as const, id: c.id, title: c.title })),
+          ...topic.diagrams.map((d) => ({ kind: "diagram" as const, id: d.id, title: d.title })),
+        ],
+        labs: topic.labs.map((l) => ({ id: l.id, title: l.title, status: l.status })),
         progress: {
           status: progress?.status ?? "NOT_STARTED",
           confidence: progress?.confidence ?? 0,

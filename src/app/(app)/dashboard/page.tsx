@@ -125,9 +125,9 @@ export default async function Dashboard() {
           <CardHeader><CardTitle>Recent architectures</CardTitle></CardHeader>
           <CardContent>
             {d.diagrams.length ? (
-              <ul className="space-y-1.5 text-sm">{d.diagrams.map((x) => <li key={x.id} className="truncate">{x.title}</li>)}</ul>
+              <ul className="space-y-1.5 text-sm">{d.diagrams.map((x) => <li key={x.id} className="flex items-center justify-between gap-2"><Link href={`/studio/${x.id}`} className="truncate hover:text-primary">{x.title}</Link><Badge variant={x.provider === "azure" ? "azure" : "aws"}>{x.provider.toUpperCase()}</Badge></li>)}</ul>
             ) : (
-              <Empty text="Architecture Studio arrives in Phase 2." action={<Link href="/studio" className="text-xs text-primary">What it will do →</Link>} />
+              <Empty text="No saved architectures yet." action={<Link href="/studio" className="text-xs text-primary">Open the concept library →</Link>} />
             )}
           </CardContent>
         </Card>
@@ -135,9 +135,9 @@ export default async function Dashboard() {
           <CardHeader><CardTitle>Active hands-on labs</CardTitle></CardHeader>
           <CardContent>
             {d.labs.length ? (
-              <ul className="space-y-1.5 text-sm">{d.labs.map((x) => <li key={x.id} className="flex justify-between gap-2"><span className="truncate">{x.title}</span><Badge variant="outline">{x.status.toLowerCase().replace("_", " ")}</Badge></li>)}</ul>
+              <ul className="space-y-1.5 text-sm">{d.labs.map((x) => <li key={x.id} className="flex justify-between gap-2"><Link href={`/labs/${x.id}`} className="truncate hover:text-primary">{x.title}</Link><Badge variant="outline">{x.status.toLowerCase().replace("_", " ")}</Badge></li>)}</ul>
             ) : (
-              <Empty text="Lab notebook arrives in Phase 5." />
+              <Empty text="No lab in progress." action={<Link href="/labs" className="text-xs text-primary">Start from a template →</Link>} />
             )}
           </CardContent>
         </Card>

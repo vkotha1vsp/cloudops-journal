@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import {
   Bold, CheckSquare, Code, Code2, Heading1, Heading2, Heading3, Info, Italic, Link2, List, ListOrdered, Minus, Quote,
@@ -9,6 +9,8 @@ import {
 import type { TiptapNode } from "@/domain/tiptap";
 import { cn } from "@/lib/utils";
 import { CODE_LANGUAGES, editorExtensions, isSafeHref } from "./extensions";
+import { CONCEPTS } from "@/domain/architecture/library";
+import { api } from "@/lib/client";
 
 type Props = {
   content: TiptapNode;
@@ -101,6 +103,7 @@ function Toolbar({ editor }: { editor: Editor }) {
       {btn("Code block", <Code2 />, () => c().toggleCodeBlock().run(), editor.isActive("codeBlock"))}
       {btn("Table", <Table2 />, () => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), false, editor.isActive("table"))}
       {btn("Divider", <Minus />, () => c().setHorizontalRule().run())}
+      <InsertDiagram editor={editor} />
       {editor.isActive("codeBlock") ? (
         <select
           aria-label="Code language"
@@ -141,5 +144,33 @@ function Toolbar({ editor }: { editor: Editor }) {
         </span>
       ) : null}
     </div>
+  );
+}
+
+function InsertDiagram({ editor }: { editor: Editor }) {
+  const [mine, setMine] = useState<{ id: string; title: string }[] | null>(null);
+  return (
+    <select
+      aria-label="Insert architecture diagram"
+      title="Insert an interactive architecture diagram"
+      className="ml-1 h-7 max-w-40 rounded border bg-background px-1 text-xs text-muted-foreground"
+      value=""
+      onFocus={() => {
+        if (mine === null) api<{ diagrams: { id: string; title: string }[] }>("/api/diagrams").then((r) => setMine(r.diagrams)).catch(() => setMine([]));
+      }}
+      onChange={(e) => {
+        const [kind, id] = e.target.value.split(":");
+        if (!id) return;
+        editor.chain().focus().insertArchitecture(kind === "d" ? { diagramId: id } : { conceptId: id }).run();
+      }}
+    >
+      <option value="">＋ Diagram…</option>
+      <optgroup label="My diagrams">
+        {(mine ?? []).map((d) => <option key={d.id} value={`d:${d.id}`}>{d.title}</option>)}
+      </optgroup>
+      <optgroup label="Concept library">
+        {CONCEPTS.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.title}</option>)}
+      </optgroup>
+    </select>
   );
 }

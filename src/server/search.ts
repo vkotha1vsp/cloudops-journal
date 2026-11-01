@@ -112,11 +112,11 @@ function toHit(r: Row): SearchHit {
       case "topic":
         return `/learn/${slugFromTrack(r.extra ?? "AWS")}/topic/${r.id}`;
       case "lab":
-        return `/labs?focus=${r.id}`;
+        return `/labs/${r.id}`;
       case "troubleshooting":
-        return `/troubleshooting?focus=${r.id}`;
+        return `/troubleshooting/${r.id}`;
       case "diagram":
-        return `/studio?diagram=${r.id}`;
+        return `/studio/${r.id}`;
       case "tag":
         return `/journal?tag=${encodeURIComponent(r.title)}`;
     }

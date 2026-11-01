@@ -176,3 +176,8 @@
 .hljs-meta, .hljs-symbol { color: #89ddff; }
 .hljs-deletion { color: #ff5370; }
 .hljs-addition { color: #c3e88d; }
+
+/* Read-only rendered Markdown (AI answers) reuses the editor typography. */
+.ProseMirror.ai-answer {
+  min-height: 0;
+}

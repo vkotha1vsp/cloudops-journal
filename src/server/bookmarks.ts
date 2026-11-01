@@ -17,15 +17,15 @@ async function resolveEntity(ownerId: string, entityType: EntityType, entityId: 
     }
     case "DIAGRAM": {
       const d = await prisma.architectureDiagram.findFirst({ where: { id: entityId, ownerId }, select: { title: true } });
-      return d && { label: d.title, href: `/studio?diagram=${entityId}` };
+      return d && { label: d.title, href: `/studio/${entityId}` };
     }
     case "LAB": {
       const l = await prisma.lab.findFirst({ where: { id: entityId, ownerId }, select: { title: true } });
-      return l && { label: l.title, href: `/labs?focus=${entityId}` };
+      return l && { label: l.title, href: `/labs/${entityId}` };
     }
     case "TROUBLESHOOTING": {
       const c = await prisma.troubleshootingCase.findFirst({ where: { id: entityId, ownerId }, select: { title: true } });
-      return c && { label: c.title, href: `/troubleshooting?focus=${entityId}` };
+      return c && { label: c.title, href: `/troubleshooting/${entityId}` };
     }
     case "CATEGORY": {
       const c = await prisma.category.findFirst({ where: { id: entityId, ownerId }, select: { name: true, track: true } });

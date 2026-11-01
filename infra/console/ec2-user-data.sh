@@ -112,6 +112,10 @@ services:
       AWS_REGION: ${AWS_REGION}
       S3_ATTACHMENTS_BUCKET: ${S3_ATTACHMENTS_BUCKET}
       MAX_UPLOAD_MB: "25"
+      # Optional AI assistant (docs/07-phases-2-5.md). Off unless set in config.env.
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-}
+      BEDROCK_REGION: ${BEDROCK_REGION:-}
     depends_on:
       db: { condition: service_healthy }
     logging:

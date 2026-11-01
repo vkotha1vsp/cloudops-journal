@@ -1,15 +1,39 @@
 /**
- * Architecture graph model and validation rules (contract for Architecture Studio, Phase 2).
- * Encodes the accuracy requirements from the spec, e.g. security groups attach to resources
- * rather than forwarding traffic, target groups are configuration, Route 53 only resolves DNS.
+ * Typed architecture graph and validation rules.
+ * The rules encode how AWS/Azure actually behave, e.g. security groups attach to resources rather than
+ * forwarding traffic, target groups are configuration, Route 53 resolves names but never proxies requests.
  */
+import { COMPUTE_KINDS, DATA_KINDS, DNS_KINDS, LOAD_BALANCER_KINDS, SECURITY_FILTER_KINDS } from "./catalog";
+
 export type Relation =
-  | "dns-resolves" | "connects" | "routes-to" | "forwards-to" | "registers"
-  | "attached-to" | "health-checks" | "replicates" | "failover";
+  | "dns-resolves" // client asks a DNS service
+  | "resolves-to" // the DNS answer points at an endpoint (alias record)
+  | "connects" // a request / connection
+  | "routes-to" // network routing hop (NAT, gateway, endpoint)
+  | "forwards-to" // listener rule → target group
+  | "registers" // target group → registered target
+  | "invokes" // API Gateway → Lambda
+  | "attached-to" // SG / NSG → resource
+  | "configures" // certificate / WAF → listener or distribution
+  | "manages" // Auto Scaling group → instances
+  | "health-checks" // load balancer or DNS probe
+  | "replicates" // primary → standby / replica
+  | "failover" // primary → secondary path
+  | "uses"; // reads configuration or secrets
+
+export const RELATIONS: Relation[] = [
+  "connects", "routes-to", "forwards-to", "registers", "invokes", "dns-resolves", "resolves-to",
+  "attached-to", "configures", "manages", "health-checks", "replicates", "failover", "uses",
+];
 
 export type BoundaryKind = "region" | "vpc" | "az" | "subnet-public" | "subnet-private";
 
-export interface Boundary { id: string; kind: BoundaryKind; label: string; parentId?: string }
+export interface Boundary {
+  id: string;
+  kind: BoundaryKind;
+  label: string;
+  parentId?: string;
+}
 export interface ArchNode {
   key: string;
   kind: string;
@@ -17,9 +41,23 @@ export interface ArchNode {
   label: string;
   boundaryId?: string;
   config?: Record<string, unknown>;
+  x?: number;
+  y?: number;
 }
-export interface ArchEdge { key: string; source: string; target: string; relation: Relation | string; protocol?: string; port?: number }
-export interface ArchGraph { boundaries: Boundary[]; nodes: ArchNode[]; edges: ArchEdge[] }
+export interface ArchEdge {
+  key: string;
+  source: string;
+  target: string;
+  relation: Relation | string;
+  protocol?: string;
+  port?: number;
+  label?: string;
+}
+export interface ArchGraph {
+  boundaries: Boundary[];
+  nodes: ArchNode[];
+  edges: ArchEdge[];
+}
 
 export interface ValidationResult {
   level: "error" | "warning" | "assumption";
@@ -29,20 +67,17 @@ export interface ValidationResult {
   edgeKeys?: string[];
 }
 
-const SECURITY_FILTERS = new Set(["security-group", "nsg", "nacl"]);
-const LOAD_BALANCERS = new Set(["alb", "nlb", "gwlb"]);
-const DNS = new Set(["route53", "azure-dns"]);
+export const TRAFFIC_RELATIONS = new Set(["connects", "routes-to", "forwards-to", "invokes"]);
 const TARGET_GROUPS = new Set(["target-group"]);
-const COMPUTE = new Set(["ec2", "ecs-task", "ecs-service", "lambda", "eks-pod", "vm", "vm-scale-set", "ip-target"]);
-const TRAFFIC_RELATIONS = new Set(["connects", "routes-to", "forwards-to"]);
-const EGRESS = new Set(["nat-gateway", "vpc-endpoint", "internet-gateway", "azure-firewall", "nat"]);
+const HEALTH_CHECK_SOURCES = new Set([...LOAD_BALANCER_KINDS, ...DNS_KINDS]);
+const EXTERNAL = new Set(["internet"]);
 
 export function validateGraph(g: ArchGraph): ValidationResult[] {
   const out: ValidationResult[] = [];
   const nodes = new Map(g.nodes.map((n) => [n.key, n]));
   const boundaries = new Map(g.boundaries.map((b) => [b.id, b]));
 
-  // Structural integrity
+  // ── Structure
   const seen = new Set<string>();
   for (const n of g.nodes) {
     if (seen.has(n.key)) out.push({ level: "error", rule: "unique-node-keys", message: `Duplicate node key “${n.key}”.`, nodeKeys: [n.key] });
@@ -62,57 +97,79 @@ export function validateGraph(g: ArchGraph): ValidationResult[] {
     const s = nodes.get(e.source);
     const t = nodes.get(e.target);
     if (!s || !t) {
-      out.push({ level: "error", rule: "edge-endpoints", message: `Edge ${e.key} points at a missing node.`, edgeKeys: [e.key] });
+      out.push({ level: "error", rule: "edge-endpoints", message: `Connection ${e.key} points at a missing resource.`, edgeKeys: [e.key] });
       continue;
     }
 
-    // Security groups / NSGs are attached, never a hop in the request path.
-    if ((SECURITY_FILTERS.has(s.kind) || SECURITY_FILTERS.has(t.kind)) && e.relation !== "attached-to")
-      out.push({ level: "error", rule: "security-group-attached", message: `${SECURITY_FILTERS.has(s.kind) ? s.label : t.label} is a firewall rule set attached to resources, not a traffic hop. Use an “attached-to” relation.`, edgeKeys: [e.key] });
-    if (e.relation === "attached-to" && !SECURITY_FILTERS.has(s.kind))
-      out.push({ level: "warning", rule: "attached-to-source", message: `Only security groups, NSGs or NACLs are normally drawn as “attached-to” (${s.label}).`, edgeKeys: [e.key] });
+    // Security groups / NSGs / NACLs are attached, never a hop.
+    if ((SECURITY_FILTER_KINDS.has(s.kind) || SECURITY_FILTER_KINDS.has(t.kind)) && e.relation !== "attached-to")
+      out.push({
+        level: "error", rule: "security-group-attached", edgeKeys: [e.key],
+        message: `${SECURITY_FILTER_KINDS.has(s.kind) ? s.label : t.label} is a set of firewall rules attached to resources, not a traffic hop. Use “attached-to”.`,
+      });
+    if (e.relation === "attached-to" && !SECURITY_FILTER_KINDS.has(s.kind))
+      out.push({ level: "warning", rule: "attached-to-source", message: `Only security groups, NSGs or NACLs are drawn as “attached-to” (${s.label}).`, edgeKeys: [e.key] });
 
-    // Route 53 resolves names; it does not proxy requests.
-    if (DNS.has(s.kind) && TRAFFIC_RELATIONS.has(e.relation))
-      out.push({ level: "error", rule: "dns-not-proxy", message: `${s.label} answers DNS queries; the client then connects to the endpoint directly. Draw client → ${s.label} as “dns-resolves” and client → load balancer as the request.`, edgeKeys: [e.key] });
-    if (DNS.has(t.kind) && e.relation !== "dns-resolves")
-      out.push({ level: "error", rule: "dns-not-proxy", message: `Traffic to ${t.label} should be a DNS resolution, not a ${e.relation} edge.`, edgeKeys: [e.key] });
+    // DNS resolves names; it never proxies requests.
+    if (DNS_KINDS.has(s.kind) && TRAFFIC_RELATIONS.has(e.relation))
+      out.push({
+        level: "error", rule: "dns-not-proxy", edgeKeys: [e.key],
+        message: `${s.label} answers DNS queries; the client then connects to the endpoint directly. Draw ${s.label} → endpoint as “resolves-to” and the client → endpoint as the request.`,
+      });
+    if (DNS_KINDS.has(t.kind) && e.relation !== "dns-resolves")
+      out.push({ level: "error", rule: "dns-not-proxy", message: `A connection into ${t.label} should be a DNS lookup (“dns-resolves”), not “${e.relation}”.`, edgeKeys: [e.key] });
+    if (e.relation === "resolves-to" && !DNS_KINDS.has(s.kind))
+      out.push({ level: "warning", rule: "resolves-to-source", message: `Only a DNS service resolves names (${s.label}).`, edgeKeys: [e.key] });
 
-    // Target groups: forwarded to by a load balancer, register compute targets.
+    // Target groups: reached by a listener rule, register targets.
     if (TARGET_GROUPS.has(t.kind) && e.relation !== "forwards-to")
       out.push({ level: "error", rule: "target-group-config", message: `${t.label} is routing configuration reached by a listener rule (“forwards-to”), not a network appliance.`, edgeKeys: [e.key] });
-    if (TARGET_GROUPS.has(t.kind) && e.relation === "forwards-to" && !LOAD_BALANCERS.has(s.kind))
+    if (TARGET_GROUPS.has(t.kind) && e.relation === "forwards-to" && !LOAD_BALANCER_KINDS.has(s.kind))
       out.push({ level: "error", rule: "target-group-config", message: `Only a load balancer listener can forward to ${t.label}.`, edgeKeys: [e.key] });
     if (TARGET_GROUPS.has(s.kind) && e.relation !== "registers")
-      out.push({ level: "error", rule: "target-group-config", message: `${s.label} should “register” targets rather than ${e.relation} them.`, edgeKeys: [e.key] });
-    if (TARGET_GROUPS.has(s.kind) && e.relation === "registers" && !COMPUTE.has(t.kind))
-      out.push({ level: "warning", rule: "target-group-targets", message: `${t.label} is not a typical target type (instance, IP, Lambda).`, edgeKeys: [e.key] });
+      out.push({ level: "error", rule: "target-group-config", message: `${s.label} should “register” targets rather than “${e.relation}” them.`, edgeKeys: [e.key] });
+    if (TARGET_GROUPS.has(s.kind) && e.relation === "registers" && !COMPUTE_KINDS.has(t.kind))
+      out.push({ level: "warning", rule: "target-group-targets", message: `${t.label} is not a usual target type (instance, IP or Lambda).`, edgeKeys: [e.key] });
 
-    // Health checks are the load balancer's own probes, distinct from user traffic.
-    if (e.relation === "health-checks" && !(LOAD_BALANCERS.has(s.kind) || s.kind === "application-gateway" || s.kind === "azure-load-balancer" || DNS.has(s.kind)))
-      out.push({ level: "warning", rule: "health-check-source", message: `Health checks normally originate from a load balancer or DNS failover policy, not ${s.label}.`, edgeKeys: [e.key] });
+    // Health checks are the load balancer's / DNS's own probes.
+    if (e.relation === "health-checks" && !HEALTH_CHECK_SOURCES.has(s.kind))
+      out.push({ level: "warning", rule: "health-check-source", message: `Health checks normally come from a load balancer or a DNS failover policy, not ${s.label}.`, edgeKeys: [e.key] });
   }
 
-  // Private subnets do not imply internet access.
-  const inPrivate = (n: ArchNode) => {
+  // ── Network reachability
+  const ancestors = (n: ArchNode) => {
+    const kinds: BoundaryKind[] = [];
     let b = n.boundaryId ? boundaries.get(n.boundaryId) : undefined;
     for (let i = 0; b && i < 10; i++) {
-      if (b.kind === "subnet-private") return true;
+      kinds.push(b.kind);
       b = b.parentId ? boundaries.get(b.parentId) : undefined;
     }
-    return false;
+    return kinds;
   };
-  const hasEgress = g.nodes.some((n) => EGRESS.has(n.kind));
+  const inPrivate = (n: ArchNode) => ancestors(n).includes("subnet-private");
+  const inPublic = (n: ArchNode) => ancestors(n).includes("subnet-public");
+  const hasKind = (k: string) => g.nodes.some((n) => n.kind === k);
+
   for (const e of g.edges) {
     const s = nodes.get(e.source);
     const t = nodes.get(e.target);
     if (!s || !t || !TRAFFIC_RELATIONS.has(e.relation)) continue;
-    if (inPrivate(s) && (t.kind === "internet" || t.kind === "external-api") && !hasEgress)
-      out.push({ level: "error", rule: "private-egress", message: `${s.label} is in a private subnet and cannot reach ${t.label} without a NAT gateway or VPC endpoint.`, edgeKeys: [e.key] });
+    if (inPrivate(s) && EXTERNAL.has(t.kind) && !hasKind("nat-gateway"))
+      out.push({ level: "error", rule: "private-egress", message: `${s.label} is in a private subnet and cannot reach ${t.label} without a NAT gateway.`, edgeKeys: [e.key] });
+    if (inPrivate(s) && (t.kind === "s3" || t.kind === "dynamodb") && !hasKind("nat-gateway") && !hasKind("vpc-endpoint"))
+      out.push({ level: "error", rule: "private-egress", message: `${s.label} is in a private subnet: reaching ${t.label} needs a VPC endpoint or a NAT gateway.`, edgeKeys: [e.key] });
+    if ((s.kind === "client" || s.kind === "internet") && inPrivate(t))
+      out.push({ level: "error", rule: "private-ingress", message: `${t.label} is in a private subnet, so the internet cannot reach it directly. Put a load balancer in front.`, edgeKeys: [e.key] });
+  }
+  for (const n of g.nodes) {
+    if (DATA_KINDS.has(n.kind) && inPublic(n))
+      out.push({ level: "warning", rule: "db-public", message: `${n.label} sits in a public subnet. Databases normally live in private subnets.`, nodeKeys: [n.key] });
   }
 
-  // Load balancers with a target group but no healthy-check edge: state the assumption explicitly.
-  for (const n of g.nodes.filter((x) => LOAD_BALANCERS.has(x.kind))) {
+  // ── Completeness hints
+  for (const n of g.nodes.filter((x) => x.kind === "alb" || x.kind === "nlb")) {
+    if (!g.edges.some((e) => e.source === n.key && e.relation === "forwards-to"))
+      out.push({ level: "warning", rule: "lb-no-target", message: `${n.label} has no listener rule forwarding to a target group.`, nodeKeys: [n.key] });
     if (!g.edges.some((e) => e.source === n.key && e.relation === "health-checks"))
       out.push({ level: "assumption", rule: "health-check-default", message: `${n.label}: no health check drawn; assuming the target group's default (HTTP, path /).`, nodeKeys: [n.key] });
   }
@@ -121,3 +178,7 @@ export function validateGraph(g: ArchGraph): ValidationResult[] {
 }
 
 export const hasErrors = (results: ValidationResult[]) => results.some((r) => r.level === "error");
+
+export function emptyGraph(): ArchGraph {
+  return { boundaries: [], nodes: [], edges: [] };
+}

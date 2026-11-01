@@ -77,8 +77,44 @@ check "delete category cascades topic" 200 "$(code -b "$JAR" -H "Origin: $BASE" 
 check "deleted topic is gone" 404 "$(code -b "$JAR" "$BASE/api/topics/$topic_id")"
 check "delete page" 200 "$(code -b "$JAR" -H "Origin: $BASE" -X DELETE "$BASE/api/pages/$id")"
 
+echo "Architecture Studio and flows"
+diag=$(json -X POST -d '{"conceptId":"alb-web-app"}' "$BASE/api/diagrams" | field id)
+check "concept copied into my diagrams" yes "$([[ -n "$diag" ]] && echo yes || echo no)"
+check "diagram has animation scenarios" yes "$(json "$BASE/api/diagrams/$diag" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).diagram.graph.nodes.length>3?"yes":"no"))')"
+check "invalid relation rejected" 400 "$(code -b "$JAR" -H 'Content-Type: application/json' -H "Origin: $BASE" -X POST -d '{"title":"x","graph":{"boundaries":[],"nodes":[{"key":"a","kind":"ec2","role":"traffic","label":"a"},{"key":"b","kind":"rds","role":"traffic","label":"b"}],"edges":[{"key":"e","source":"a","target":"b","relation":"teleports"}]}}' "$BASE/api/diagrams")"
+pg=$(json -X POST -d '{}' "$BASE/api/diagrams/$diag/page" | field page.id)
+check "diagram saved as journal page" 200 "$(code -b "$JAR" "$BASE/journal/$pg")"
+for path in /studio/$diag "/flows?diagram=$diag&mode=sg-reject" /studio/concepts/route53-failover "/studio/new?text=ALB%20and%20two%20EC2"; do
+  check "GET $path" 200 "$(code -b "$JAR" "$BASE$path")"
+done
+
+echo "Labs and troubleshooting"
+lab=$(json -X POST -d '{"templateId":"alb-target-groups"}' "$BASE/api/labs" | field id)
+check "lab started from template" 200 "$(code -b "$JAR" "$BASE/labs/$lab")"
+check "lab update records errors" "IN_PROGRESS" "$(json -X PATCH -d '{"status":"IN_PROGRESS","errorsEncountered":"smokelab Target.Timeout"}' "$BASE/api/labs/$lab" | field lab.status)"
+case_id=$(json -X POST -d "{\"title\":\"Smoke case\",\"area\":\"aws\",\"errorMessage\":\"smokecase 502 Bad Gateway\",\"labIds\":[\"$lab\"],\"diagramIds\":[\"$diag\"]}" "$BASE/api/troubleshooting" | field id)
+check "case links lab and diagram" "1,1" "$(json "$BASE/api/troubleshooting/$case_id" | field 'case.labs.length+","+o.case.diagrams.length')"
+check "search finds case by error text" troubleshooting "$(json "$BASE/api/search?q=smokecase" | field 'results[0].kind')"
+check "unknown area rejected" 400 "$(code -b "$JAR" -H 'Content-Type: application/json' -H "Origin: $BASE" -X POST -d '{"title":"x","area":"mainframe"}' "$BASE/api/troubleshooting")"
+
+echo "Import and assistant"
+imp=$(json -X POST -d '{"markdown":"# Smoke import\n\nRoute 53 points at the ALB.\n\n```mermaid\ngraph TD; A-->B\n```\n<script>alert(1)</script>"}' "$BASE/api/imports")
+check "paste detects mermaid" 1 "$(echo "$imp" | field detected.mermaidBlocks)"
+check "paste strips scripts" no "$(echo "$imp" | field html | grep -q '<script' && echo yes || echo no)"
+imp_page=$(json -X POST -d '{"title":"Smoke import","content":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x"}]}]}}' "$BASE/api/imports/$(echo "$imp" | field id)" | field pageId)
+check "import saved as page" 200 "$(code -b "$JAR" "$BASE/journal/$imp_page")"
+tmpf="$(mktemp --suffix=.exe)"; echo hi > "$tmpf"
+check "disallowed file type rejected" 415 "$(code -b "$JAR" -H "Origin: $BASE" -F "file=@$tmpf" "$BASE/api/imports")"; rm -f "$tmpf"
+check "assistant returns journal sources" yes "$(json -X POST -d '{"kind":"question","prompt":"smokecase 502"}' "$BASE/api/ai" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).sources.length>0?"yes":"no"))')"
+
+echo "Phase 2-5 cleanup"
+check "delete case" 200 "$(code -b "$JAR" -H "Origin: $BASE" -X DELETE "$BASE/api/troubleshooting/$case_id")"
+check "delete lab" 200 "$(code -b "$JAR" -H "Origin: $BASE" -X DELETE "$BASE/api/labs/$lab")"
+check "delete diagram" 200 "$(code -b "$JAR" -H "Origin: $BASE" -X DELETE "$BASE/api/diagrams/$diag")"
+for p in "$pg" "$imp_page"; do json -X DELETE "$BASE/api/pages/$p" >/dev/null; done
+
 echo "Pages"
-for path in /dashboard /journal /learn/aws /learn/azure /learn/devops /search?q=alb /bookmarks /settings /studio /import; do
+for path in /dashboard /journal /learn/aws /learn/azure /learn/devops /search?q=alb /bookmarks /settings /studio /flows /labs /troubleshooting /troubleshooting/new /import /roadmaps "/roadmaps?r=azure-for-aws" /assistant; do
   check "GET $path" 200 "$(code -b "$JAR" "$BASE$path")"
 done
 
