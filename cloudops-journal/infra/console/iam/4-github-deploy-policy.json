@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadSource",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::cloudops-journal-build-source-<ACCOUNT_ID>/source/*"
+    },
+    {
+      "Sid": "RunBuild",
+      "Effect": "Allow",
+      "Action": ["codebuild:StartBuild", "codebuild:BatchGetBuilds"],
+      "Resource": "arn:aws:codebuild:<REGION>:<ACCOUNT_ID>:project/cloudops-journal-image"
+    },
+    {
+      "Sid": "ReadBuildLogs",
+      "Effect": "Allow",
+      "Action": "logs:GetLogEvents",
+      "Resource": "arn:aws:logs:<REGION>:<ACCOUNT_ID>:log-group:/aws/codebuild/cloudops-journal-image:*"
+    },
+    {
+      "Sid": "RunDeployScriptDocument",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:<REGION>::document/AWS-RunShellScript"
+    },
+    {
+      "Sid": "RunDeployScriptOnTaggedInstanceOnly",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ec2:<REGION>:<ACCOUNT_ID>:instance/*",
+      "Condition": { "StringEquals": { "ssm:resourceTag/App": "cloudops-journal" } }
+    },
+    {
+      "Sid": "ReadDeployResult",
+      "Effect": "Allow",
+      "Action": ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"],
+      "Resource": "*"
+    }
+  ]
+}

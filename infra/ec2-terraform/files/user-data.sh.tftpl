@@ -1,0 +1,70 @@
+#!/bin/bash
+# EC2 first-boot setup (Amazon Linux 2023). Rendered by Terraform (templatefile).
+set -euxo pipefail
+exec > >(tee /var/log/cloudops-setup.log) 2>&1
+
+dnf install -y docker jq
+systemctl enable --now docker
+
+# Docker Compose v2 plugin
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64" \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+# 2 GB swap: headroom for Postgres + Node on a small instance
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+mkdir -p /opt/cloudops /var/lib/cloudops/pgdata
+cd /opt/cloudops
+echo '${compose_b64}' | base64 -d > compose.yml
+echo '${deploy_b64}'  | base64 -d > deploy.sh
+echo '${backup_b64}'  | base64 -d > backup.sh
+chmod 700 deploy.sh backup.sh
+
+# Non-secret settings. Secrets are fetched from Secrets Manager at deploy time.
+cat > config.env <<'CFG'
+AWS_REGION=${aws_region}
+ECR_REPOSITORY_URI=${ecr_repository_uri}
+SECRET_ID=${secret_id}
+APP_DOMAIN=${app_domain}
+ALLOWED_EMAILS=${allowed_emails}
+COGNITO_CLIENT_ID=${cognito_client_id}
+COGNITO_ISSUER=${cognito_issuer}
+S3_ATTACHMENTS_BUCKET=${attachments_bucket}
+BACKUP_BUCKET=${backup_bucket}
+LOG_GROUP=${log_group}
+CFG
+chmod 600 config.env
+
+# Nightly database backup at 07:30 UTC
+cat > /etc/systemd/system/cloudops-backup.service <<'UNIT'
+[Unit]
+Description=CloudOps Journal database backup to S3
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/cloudops/backup.sh
+UNIT
+cat > /etc/systemd/system/cloudops-backup.timer <<'UNIT'
+[Unit]
+Description=Nightly CloudOps Journal backup
+[Timer]
+OnCalendar=*-*-* 07:30:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now cloudops-backup.timer
+
+# First deploy if CodeBuild has already pushed an image; otherwise GitHub Actions deploys later.
+if aws ecr describe-images --region ${aws_region} --repository-name ${ecr_repository_name} --image-ids imageTag=latest >/dev/null 2>&1; then
+  /opt/cloudops/deploy.sh latest || echo "Initial deploy failed; run: sudo /opt/cloudops/deploy.sh latest"
+else
+  echo "No image in ECR yet. Push to main (GitHub Actions) to build and deploy."
+fi

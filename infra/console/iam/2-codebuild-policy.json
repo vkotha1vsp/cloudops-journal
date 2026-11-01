@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadCodeFromGitHubConnection",
+      "Effect": "Allow",
+      "Action": [
+        "codeconnections:UseConnection",
+        "codeconnections:GetConnection",
+        "codeconnections:GetConnectionToken",
+        "codestar-connections:UseConnection",
+        "codestar-connections:GetConnection",
+        "codestar-connections:GetConnectionToken"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:<REGION>:<ACCOUNT_ID>:repository/cloudops-journal"
+    }
+  ]
+}

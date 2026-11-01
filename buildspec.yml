@@ -1,0 +1,40 @@
+# AWS CodeBuild: builds the app and migrator images and pushes them to Amazon ECR.
+# Started by .github/workflows/deploy-ec2.yml with IMAGE_TAG = the Git commit SHA.
+# CodeBuild stops at the first failing command. Project settings (Terraform: infra/ec2-terraform/codebuild.tf): privileged mode on (Docker),
+# env vars ECR_REPOSITORY_URI and IMAGE_TAG.
+version: 0.2
+
+env:
+  variables:
+    NODE_IMAGE: public.ecr.aws/docker/library/node:22-alpine
+    DOCKER_BUILDKIT: "1"
+
+phases:
+  pre_build:
+    commands:
+      - test -n "$ECR_REPOSITORY_URI"
+      - IMAGE_TAG="${IMAGE_TAG:-${CODEBUILD_RESOLVED_SOURCE_VERSION:-manual-$CODEBUILD_BUILD_NUMBER}}"
+      - REGISTRY="${ECR_REPOSITORY_URI%%/*}"
+      - echo "Building $ECR_REPOSITORY_URI:$IMAGE_TAG"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+      # Warm the layer cache from the previous image (ignore failure on first build).
+      - docker pull "$ECR_REPOSITORY_URI:latest" || true
+  build:
+    commands:
+      - >-
+        docker build --target runner
+        --build-arg NODE_IMAGE="$NODE_IMAGE" --build-arg BUILDKIT_INLINE_CACHE=1
+        --cache-from "$ECR_REPOSITORY_URI:latest"
+        -t "$ECR_REPOSITORY_URI:$IMAGE_TAG" -t "$ECR_REPOSITORY_URI:latest" .
+      - >-
+        docker build --target migrator
+        --build-arg NODE_IMAGE="$NODE_IMAGE"
+        -t "$ECR_REPOSITORY_URI:migrate-$IMAGE_TAG" -t "$ECR_REPOSITORY_URI:migrate-latest" .
+  post_build:
+    commands:
+      - docker push "$ECR_REPOSITORY_URI:$IMAGE_TAG"
+      - docker push "$ECR_REPOSITORY_URI:migrate-$IMAGE_TAG"
+      - docker push "$ECR_REPOSITORY_URI:latest"
+      - docker push "$ECR_REPOSITORY_URI:migrate-latest"
+      - echo "Pushed $ECR_REPOSITORY_URI:$IMAGE_TAG"
+

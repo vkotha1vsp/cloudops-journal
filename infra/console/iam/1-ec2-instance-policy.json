@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PullAppImage",
+      "Effect": "Allow",
+      "Action": ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability", "ecr:DescribeImages"],
+      "Resource": "arn:aws:ecr:<REGION>:<ACCOUNT_ID>:repository/cloudops-journal"
+    },
+    {
+      "Sid": "ReadAppSecret",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:cloudops-journal/app-*"
+    },
+    {
+      "Sid": "Attachments",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::cloudops-journal-attachments-<ACCOUNT_ID>/users/*"
+    },
+    {
+      "Sid": "Backups",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::cloudops-journal-backups-<ACCOUNT_ID>/postgres/*"
+    },
+    {
+      "Sid": "Logs",
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:<REGION>:<ACCOUNT_ID>:log-group:/ec2/cloudops-journal:*"
+    }
+  ]
+}

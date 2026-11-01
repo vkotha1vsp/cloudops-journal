@@ -1,11 +1,10 @@
-name: Deploy to AWS
+name: Deploy to AWS (ECS Fargate, manual)
 
-# Runs on every push to main after CI passes, or manually.
 # Requires repository variables (Settings → Secrets and variables → Actions → Variables);
 # `terraform output github_actions_variables` prints them all.
+# Manual only: pushes to main deploy to EC2 via deploy-ec2.yml. Switch the trigger to
+# `push: branches: [main]` here (and remove it from deploy-ec2.yml) if you move to ECS.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

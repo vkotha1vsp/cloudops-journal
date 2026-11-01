@@ -13,6 +13,7 @@ plus production AWS infrastructure and CI/CD.
 | [docs/02-PHASE-1.md](docs/02-PHASE-1.md) | What Phase 1 delivers, where it lives, how to verify it |
 | [docs/03-DEPLOYMENT.md](docs/03-DEPLOYMENT.md) | Deploy to AWS: ECS Fargate (Terraform) or a single EC2 |
 | [docs/04-OPERATIONS.md](docs/04-OPERATIONS.md) | Backups, recovery procedures, maintenance, cleanup |
+| [docs/05-EC2-CODEBUILD.md](docs/05-EC2-CODEBUILD.md) | **Active deploy path:** GitHub Actions → CodeBuild → ECR → EC2 behind ALB/ACM with Cognito login |
 
 ## Stack
 
@@ -64,8 +65,9 @@ src/domain/         pure logic: tiptap text, slugs, tracks, topic sections, arch
 src/lib/            auth, env, db, API wrapper (auth, CSRF, rate limit, errors), S3
 prisma/             schema, migrations, seed
 tests/              vitest suites
-infra/terraform/    Option B (production) · infra/ec2-compose/  Option A (low cost)
-.github/workflows/  ci.yml, deploy.yml
+infra/ec2-terraform/  EC2 + CodeBuild stack (default deploy) · infra/terraform/  ECS Fargate · infra/ec2-compose/  manual EC2
+.github/workflows/  ci.yml, deploy-ec2.yml (push to main), deploy.yml (ECS, manual)
+buildspec.yml       CodeBuild: build images, push to ECR
 ```
 
 ## Security model (summary)

@@ -3,9 +3,11 @@
 #   docker build -t cloudops-journal .                 → app image (default target)
 #   docker build --target migrator -t cloudops-migrate . → one-off image that runs `prisma migrate deploy`
 
-ARG NODE_VERSION=22-alpine
+# Override with a mirror to avoid Docker Hub rate limits (CodeBuild uses ECR Public):
+#   --build-arg NODE_IMAGE=public.ecr.aws/docker/library/node:22-alpine
+ARG NODE_IMAGE=node:22-alpine
 
-FROM node:${NODE_VERSION} AS deps
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 COPY package.json package-lock.json ./
@@ -13,7 +15,7 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 RUN npm ci --no-audit --no-fund
 
-FROM node:${NODE_VERSION} AS build
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,7 +25,7 @@ COPY . .
 RUN npx prisma generate && npx prisma version && npm run build
 
 # One-off migration runner (used by CI as an ECS task before each deploy).
-FROM node:${NODE_VERSION} AS migrator
+FROM ${NODE_IMAGE} AS migrator
 WORKDIR /app
 RUN apk add --no-cache openssl
 COPY --from=build /app/node_modules ./node_modules
@@ -34,7 +36,7 @@ COPY --from=build /app/tsconfig.json ./
 USER node
 CMD ["npx", "prisma", "migrate", "deploy"]
 
-FROM node:${NODE_VERSION} AS runner
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

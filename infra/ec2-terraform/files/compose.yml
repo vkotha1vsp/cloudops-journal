@@ -1,0 +1,67 @@
+# /opt/cloudops/compose.yml on the EC2 instance. Values come from /opt/cloudops/.env,
+# which deploy.sh writes from config.env + Secrets Manager (mode 600, never in Git).
+name: cloudops
+
+services:
+  db:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloudops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: cloudops
+    volumes:
+      - /var/lib/cloudops/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudops"]
+      interval: 5s
+      retries: 30
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP}
+        awslogs-create-group: "false"
+        awslogs-stream: db
+    # Not published: reachable only from containers on this host.
+
+  migrate:
+    image: ${MIGRATE_IMAGE}
+    profiles: ["migrate"]
+    environment:
+      DATABASE_URL: postgresql://cloudops:${POSTGRES_PASSWORD}@db:5432/cloudops?schema=public
+    depends_on:
+      db: { condition: service_healthy }
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP}
+        awslogs-create-group: "false"
+        awslogs-stream: migrate
+
+  app:
+    image: ${IMAGE}
+    restart: unless-stopped
+    ports:
+      - "3000:3000" # instance security group allows this port only from the ALB
+    environment:
+      DATABASE_URL: postgresql://cloudops:${POSTGRES_PASSWORD}@db:5432/cloudops?schema=public
+      NEXTAUTH_URL: https://${APP_DOMAIN}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS}
+      COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
+      COGNITO_CLIENT_SECRET: ${COGNITO_CLIENT_SECRET}
+      COGNITO_ISSUER: ${COGNITO_ISSUER}
+      AWS_REGION: ${AWS_REGION}
+      S3_ATTACHMENTS_BUCKET: ${S3_ATTACHMENTS_BUCKET}
+      MAX_UPLOAD_MB: "25"
+    depends_on:
+      db: { condition: service_healthy }
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP}
+        awslogs-create-group: "false"
+        awslogs-stream: app
