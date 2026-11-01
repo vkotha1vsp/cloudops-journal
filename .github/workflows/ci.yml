@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main] # main is covered by deploy.yml, which calls this workflow first
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cloudops
+          POSTGRES_PASSWORD: cloudops
+          POSTGRES_DB: cloudops_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cloudops" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cloudops:cloudops@localhost:5432/cloudops_test?schema=public
+      TEST_DATABASE_URL: postgresql://cloudops:cloudops@localhost:5432/cloudops_test?schema=public
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+      - name: Migrations match schema.prisma (drift check)
+        run: npm run db:drift
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit, API and architecture tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: End-to-end smoke test
+        env:
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: ci-secret-0123456789abcdef0123
+          ALLOWED_EMAILS: ci@example.com
+          AUTH_DEV_LOGIN: "true"
+          AUTH_DEV_PASSWORD: ci-password
+          SEED_ADMIN_EMAIL: ci@example.com
+        run: |
+          npm run db:seed
+          npx next start -p 3000 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && break; sleep 1; done
+          BASE=http://localhost:3000 EMAIL=ci@example.com PASSWORD=ci-password ./scripts/smoke-test.sh
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build app and migrator images
+        run: |
+          docker buildx build --target runner -t cloudops-journal:ci --load .
+          docker buildx build --target migrator -t cloudops-migrate:ci .

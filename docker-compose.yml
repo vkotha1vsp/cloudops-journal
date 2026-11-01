@@ -1,0 +1,40 @@
+# Local development:  docker compose up -d db   (then npm run dev)
+# Full stack locally: docker compose --profile app up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cloudops
+      POSTGRES_PASSWORD: cloudops
+      POSTGRES_DB: cloudops
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudops"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    profiles: ["app"]
+    build: { context: ., target: migrator }
+    environment:
+      DATABASE_URL: postgresql://cloudops:cloudops@db:5432/cloudops?schema=public
+    depends_on:
+      db: { condition: service_healthy }
+
+  app:
+    profiles: ["app"]
+    build: { context: ., target: runner }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cloudops:cloudops@db:5432/cloudops?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:

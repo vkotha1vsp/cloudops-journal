@@ -1,0 +1,62 @@
+# Option A: low-cost single-EC2 deployment (Ubuntu + Docker Compose + Caddy for HTTPS).
+# Run from the repository root:
+#   docker compose -f infra/ec2-compose/docker-compose.prod.yml --env-file infra/ec2-compose/.env up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloudops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: cloudops
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudops"]
+      interval: 5s
+      retries: 20
+    # No published port: reachable only from the compose network.
+
+  migrate:
+    build: { context: ../.., target: migrator }
+    environment:
+      DATABASE_URL: postgresql://cloudops:${POSTGRES_PASSWORD}@db:5432/cloudops?schema=public
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    build: { context: ../.., target: runner }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://cloudops:${POSTGRES_PASSWORD}@db:5432/cloudops?schema=public
+      NEXTAUTH_URL: https://${APP_DOMAIN:?set APP_DOMAIN}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:?set ALLOWED_EMAILS}
+      COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
+      COGNITO_CLIENT_SECRET: ${COGNITO_CLIENT_SECRET}
+      COGNITO_ISSUER: ${COGNITO_ISSUER}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_ATTACHMENTS_BUCKET: ${S3_ATTACHMENTS_BUCKET}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    expose: ["3000"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

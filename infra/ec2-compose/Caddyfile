@@ -1,0 +1,20 @@
+# Caddy obtains and renews a Let's Encrypt certificate for APP_DOMAIN automatically.
+# Requirements: a Route 53 A record pointing APP_DOMAIN at this instance's Elastic IP,
+# and ports 80 + 443 open in the instance security group.
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		-Server
+	}
+	request_body {
+		max_size 5MB
+	}
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Host {host}
+	}
+}

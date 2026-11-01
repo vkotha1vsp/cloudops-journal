@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored) and edit.
+aws_region        = "us-east-1"
+hosted_zone_name  = "example.com"          # existing Route 53 hosted zone you own
+app_subdomain     = "learn"                # → https://learn.example.com
+admin_email       = "you@example.com"      # only allowed user; Cognito emails a temporary password
+alarm_email       = "you@example.com"
+github_repository = "your-github-user/cloudops-journal"
+
+# Cost knobs
+nat_gateway       = "single"   # "none" saves ~USD 33/month (tasks get public IPs, still only reachable via the ALB)
+db_instance_class = "db.t4g.micro"
+db_multi_az       = false

@@ -1,0 +1,567 @@
+// CloudOps Journal — data model
+// Every content row is owned by a User (directly via ownerId, or through a cascading parent).
+// Server code must always filter by ownerId; see src/server/*.
+
+// Prisma 7: Rust-free client using the node-postgres driver adapter (see src/lib/db.ts).
+// The connection URL lives in prisma.config.ts.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Track {
+  AWS
+  AZURE
+  DEVOPS
+  GENERAL
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum Visibility {
+  PRIVATE
+  PUBLIC
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  LEARNING
+  REVIEWING
+  MASTERED
+}
+
+enum LabStatus {
+  PLANNED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+}
+
+enum ImportStatus {
+  UPLOADED
+  PARSED
+  SAVED
+  FAILED
+}
+
+enum AIJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  APPROVED
+  REJECTED
+}
+
+enum EntityType {
+  PAGE
+  TOPIC
+  DIAGRAM
+  LAB
+  TROUBLESHOOTING
+  CATEGORY
+}
+
+enum StepOutcome {
+  OK
+  REJECTED
+  FAILED
+  FAILOVER
+}
+
+// ───────────────────────────── Identity ─────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  cognitoSub  String?  @unique
+  email       String   @unique
+  name        String?
+  role        String   @default("admin")
+  preferences Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspaces       Workspace[]
+  categories       Category[]
+  topics           Topic[]
+  pages            JournalPage[]
+  pageVersions     JournalPageVersion[]
+  diagrams         ArchitectureDiagram[]
+  labs             Lab[]
+  cases            TroubleshootingCase[]
+  attachments      Attachment[]
+  imports          Import[]
+  tags             Tag[]
+  bookmarks        Bookmark[]
+  progress         LearningProgress[]
+  references       Reference[]
+  aiJobs           AIJob[]
+  recentViews      RecentView[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  ownerId   String
+  name      String
+  slug      String
+  isDefault Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, slug])
+}
+
+// ───────────────────────────── Knowledge tree ─────────────────────────────
+
+model Category {
+  id          String   @id @default(cuid())
+  ownerId     String
+  track       Track
+  parentId    String?
+  name        String
+  slug        String
+  description String?
+  icon        String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner    User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Category[] @relation("CategoryTree")
+  topics   Topic[]
+
+  @@unique([ownerId, track, parentId, slug])
+  @@index([ownerId, track])
+}
+
+/// A learning subject. `sections` holds the 18 structured sections keyed by SectionKey
+/// (see src/domain/topic-sections.ts), each value a Tiptap JSON document.
+model Topic {
+  id          String   @id @default(cuid())
+  ownerId     String
+  categoryId  String
+  title       String
+  slug        String
+  summary     String?
+  sections    Json     @default("{}")
+  plainText   String   @default("")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner      User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  category   Category              @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  pages      JournalPage[]
+  diagrams   ArchitectureDiagram[]
+  labs       Lab[]
+  progress   LearningProgress[]
+  references Reference[]
+
+  @@unique([categoryId, slug])
+  @@index([ownerId])
+}
+
+// ───────────────────────────── Journal ─────────────────────────────
+
+model JournalPage {
+  id         String     @id @default(cuid())
+  ownerId    String
+  parentId   String?
+  topicId    String?
+  title      String
+  slug       String
+  icon       String?
+  content    Json       @default("{\"type\":\"doc\",\"content\":[]}")
+  plainText  String     @default("")
+  status     PageStatus @default(DRAFT)
+  visibility Visibility @default(PRIVATE)
+  metadata   Json       @default("{}")
+  version    Int        @default(1)
+  sortOrder  Int        @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  owner       User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parent      JournalPage?         @relation("PageTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    JournalPage[]        @relation("PageTree")
+  topic       Topic?               @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  versions    JournalPageVersion[]
+  tags        PageTag[]
+  attachments Attachment[]
+  references  Reference[]
+  imports     Import[]
+  diagrams    ArchitectureDiagram[] @relation("PageDiagrams")
+  labs        Lab[]                 @relation("PageLabs")
+
+  @@unique([ownerId, slug])
+  @@index([ownerId, updatedAt])
+  @@index([parentId])
+}
+
+model JournalPageVersion {
+  id        String   @id @default(cuid())
+  pageId    String
+  ownerId   String
+  version   Int
+  title     String
+  content   Json
+  plainText String
+  note      String?
+  createdAt DateTime @default(now())
+
+  page  JournalPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  owner User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, version])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  ownerId   String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+
+  owner User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  pages PageTag[]
+
+  @@unique([ownerId, name])
+}
+
+model PageTag {
+  pageId String
+  tagId  String
+
+  page JournalPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  tag  Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([pageId, tagId])
+  @@index([tagId])
+}
+
+// ───────────────────────────── Architecture ─────────────────────────────
+
+model ArchitectureDiagram {
+  id             String   @id @default(cuid())
+  ownerId        String
+  topicId        String?
+  title          String
+  description    String?
+  provider       String   @default("aws")
+  currentVersion Int      @default(1)
+  /// Boundaries (region/vpc/az/subnet), viewport, and validation results of the current version
+  layout         Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  owner     User                         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  topic     Topic?                       @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  versions  ArchitectureDiagramVersion[]
+  nodes     ArchitectureNode[]
+  edges     ArchitectureEdge[]
+  scenarios AnimationScenario[]
+  pages     JournalPage[]                @relation("PageDiagrams")
+  labs      Lab[]
+  cases     TroubleshootingCase[]        @relation("CaseDiagrams")
+
+  @@index([ownerId, updatedAt])
+}
+
+model ArchitectureDiagramVersion {
+  id        String   @id @default(cuid())
+  diagramId String
+  version   Int
+  /// Exact snapshot: { nodes, edges, boundaries, validation }
+  graph     Json
+  note      String?
+  createdAt DateTime @default(now())
+
+  diagram ArchitectureDiagram @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+
+  @@unique([diagramId, version])
+}
+
+model ArchitectureNode {
+  id         String  @id @default(cuid())
+  diagramId  String
+  key        String
+  kind       String
+  role       String
+  label      String
+  boundaryId String?
+  config     Json    @default("{}")
+  positionX  Float   @default(0)
+  positionY  Float   @default(0)
+
+  diagram  ArchitectureDiagram @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  outgoing ArchitectureEdge[]  @relation("EdgeSource")
+  incoming ArchitectureEdge[]  @relation("EdgeTarget")
+
+  @@unique([diagramId, key])
+}
+
+model ArchitectureEdge {
+  id        String  @id @default(cuid())
+  diagramId String
+  key       String
+  sourceId  String
+  targetId  String
+  relation  String
+  protocol  String?
+  port      Int?
+  label     String?
+
+  diagram ArchitectureDiagram @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  source  ArchitectureNode    @relation("EdgeSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target  ArchitectureNode    @relation("EdgeTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([diagramId, key])
+}
+
+model AnimationScenario {
+  id          String   @id @default(cuid())
+  diagramId   String
+  mode        String   // normal | health-check-failure | sg-rejection | backend-failure | multi-az-failover | dns-failover | routing-failure
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+
+  diagram ArchitectureDiagram @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  steps   AnimationStep[]
+
+  @@unique([diagramId, mode])
+}
+
+model AnimationStep {
+  id          String      @id @default(cuid())
+  scenarioId  String
+  order       Int
+  title       String
+  explanation String
+  nodeKeys    String[]
+  edgeKeys    String[]
+  outcome     StepOutcome @default(OK)
+  durationMs  Int         @default(1500)
+
+  scenario AnimationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@unique([scenarioId, order])
+}
+
+// ───────────────────────────── Labs & troubleshooting ─────────────────────────────
+
+model Lab {
+  id                String    @id @default(cuid())
+  ownerId           String
+  topicId           String?
+  diagramId         String?
+  title             String
+  slug              String
+  objective         String    @default("")
+  prerequisites     String    @default("")
+  estimatedCost     String?
+  expectedResults   String    @default("")
+  observations      String    @default("")
+  errorsEncountered String    @default("")
+  rootCause         String    @default("")
+  resolution        String    @default("")
+  cleanup           String    @default("")
+  terraform         String    @default("")
+  checklist         Json      @default("[]")
+  status            LabStatus @default(PLANNED)
+  isTemplate        Boolean   @default(false)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  owner   User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  topic   Topic?                @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  diagram ArchitectureDiagram?  @relation(fields: [diagramId], references: [id], onDelete: SetNull)
+  steps   LabStep[]
+  pages   JournalPage[]         @relation("PageLabs")
+  cases   TroubleshootingCase[] @relation("CaseLabs")
+  attachments Attachment[]
+
+  @@unique([ownerId, slug])
+  @@index([ownerId, status])
+}
+
+model LabStep {
+  id          String  @id @default(cuid())
+  labId       String
+  order       Int
+  title       String
+  instruction String  @default("")
+  commands    String  @default("")
+  expected    String  @default("")
+  actual      String  @default("")
+  done        Boolean @default(false)
+
+  lab Lab @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, order])
+}
+
+model TroubleshootingCase {
+  id               String   @id @default(cuid())
+  ownerId          String
+  title            String
+  errorMessage     String
+  area             String   // aws | azure | kubernetes | docker | jenkins | terraform | networking | security
+  services         String[]
+  symptoms         String   @default("")
+  rootCause        String   @default("")
+  investigation    String   @default("")
+  resolution       String   @default("")
+  verification     String   @default("")
+  prevention       String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  owner       User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  diagrams    ArchitectureDiagram[] @relation("CaseDiagrams")
+  labs        Lab[]                 @relation("CaseLabs")
+  attachments Attachment[]
+
+  @@index([ownerId, area])
+}
+
+// ───────────────────────────── Files & imports ─────────────────────────────
+
+model Attachment {
+  id        String   @id @default(cuid())
+  ownerId   String
+  pageId    String?
+  labId     String?
+  caseId    String?
+  s3Key     String   @unique
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+  uploaded  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  owner User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  page  JournalPage?         @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  lab   Lab?                 @relation(fields: [labId], references: [id], onDelete: SetNull)
+  case  TroubleshootingCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
+}
+
+model Import {
+  id           String       @id @default(cuid())
+  ownerId      String
+  pageId       String?
+  sourceName   String
+  sourceType   String       // md | docx | pdf | txt | html | json | mmd | paste
+  s3Key        String?
+  status       ImportStatus @default(UPLOADED)
+  extracted    Json?
+  detected     Json?        // detected topics, proposed category, mermaid blocks
+  warnings     String[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  owner User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  page  JournalPage? @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+}
+
+// ───────────────────────────── Learning ─────────────────────────────
+
+model Bookmark {
+  id         String     @id @default(cuid())
+  ownerId    String
+  entityType EntityType
+  entityId   String
+  label      String
+  href       String
+  createdAt  DateTime   @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, entityType, entityId])
+}
+
+model RecentView {
+  id         String     @id @default(cuid())
+  ownerId    String
+  entityType EntityType
+  entityId   String
+  label      String
+  href       String
+  viewedAt   DateTime   @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, entityType, entityId])
+  @@index([ownerId, viewedAt])
+}
+
+model LearningProgress {
+  id           String         @id @default(cuid())
+  ownerId      String
+  topicId      String
+  status       ProgressStatus @default(NOT_STARTED)
+  confidence   Int            @default(0) // 0–5
+  nextReviewAt DateTime?
+  lastReviewAt DateTime?
+  updatedAt    DateTime       @updatedAt
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, topicId])
+  @@index([ownerId, nextReviewAt])
+}
+
+model Reference {
+  id        String   @id @default(cuid())
+  ownerId   String
+  topicId   String?
+  pageId    String?
+  title     String
+  url       String
+  official  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  owner User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  topic Topic?       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  page  JournalPage? @relation(fields: [pageId], references: [id], onDelete: Cascade)
+}
+
+model AIJob {
+  id         String      @id @default(cuid())
+  ownerId    String
+  kind       String      // explain | quiz | draft-page | recommend | compare
+  provider   String      // bedrock | openai
+  model      String
+  prompt     String
+  output     String?
+  grounded   Json?       // ids of journal sources used
+  status     AIJobStatus @default(QUEUED)
+  error      String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+}

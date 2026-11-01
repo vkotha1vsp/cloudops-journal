@@ -1,0 +1,8 @@
+# Copy to backend.hcl (gitignored) and fill in. Create the bucket first (versioned, encrypted):
+#   aws s3api create-bucket --bucket <name> --region us-east-1
+#   aws s3api put-bucket-versioning --bucket <name> --versioning-configuration Status=Enabled
+bucket       = "cloudops-journal-tfstate-<your-account-id>"
+key          = "cloudops-journal/prod/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true # S3-native state locking (Terraform >= 1.10). Use dynamodb_table on older versions.

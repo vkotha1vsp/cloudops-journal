@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --radius: 0.6rem;
+
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 210 40% 99%;
+    --card-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 42%;
+    --border: 214 32% 90%;
+    --input: 214 32% 88%;
+    --ring: 199 89% 42%;
+    --primary: 199 89% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 95%;
+    --secondary-foreground: 222 47% 15%;
+    --accent: 199 70% 95%;
+    --accent-foreground: 199 89% 25%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --sidebar: 210 40% 97%;
+    --sidebar-foreground: 222 30% 25%;
+    --aws: 33 100% 42%;
+    --azure: 206 100% 40%;
+    --devops: 168 76% 32%;
+  }
+
+  .dark {
+    --background: 224 32% 7%;
+    --foreground: 213 31% 92%;
+    --card: 224 28% 10%;
+    --card-foreground: 213 31% 92%;
+    --muted: 223 24% 14%;
+    --muted-foreground: 217 15% 62%;
+    --border: 222 20% 18%;
+    --input: 222 20% 22%;
+    --ring: 199 89% 55%;
+    --primary: 199 89% 55%;
+    --primary-foreground: 224 40% 8%;
+    --secondary: 223 22% 16%;
+    --secondary-foreground: 213 31% 90%;
+    --accent: 199 50% 16%;
+    --accent-foreground: 199 90% 75%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --sidebar: 225 30% 8.5%;
+    --sidebar-foreground: 215 20% 75%;
+    --aws: 36 100% 55%;
+    --azure: 206 100% 60%;
+    --devops: 168 70% 48%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+  }
+}
+
+/* ───────── Journal editor (Tiptap / ProseMirror) ───────── */
+.ProseMirror {
+  @apply min-h-[50vh] outline-none;
+}
+.ProseMirror > * + * {
+  margin-top: 0.6em;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply pointer-events-none float-left h-0 text-muted-foreground;
+}
+.ProseMirror h1 {
+  @apply mt-6 text-3xl font-semibold tracking-tight;
+}
+.ProseMirror h2 {
+  @apply mt-6 border-b pb-1 text-2xl font-semibold tracking-tight;
+}
+.ProseMirror h3 {
+  @apply mt-4 text-xl font-semibold;
+}
+.ProseMirror ul {
+  @apply list-disc pl-6;
+}
+.ProseMirror ol {
+  @apply list-decimal pl-6;
+}
+.ProseMirror blockquote {
+  @apply border-l-4 border-primary/50 pl-4 italic text-muted-foreground;
+}
+.ProseMirror a {
+  @apply text-primary underline underline-offset-2;
+}
+.ProseMirror code {
+  @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em];
+}
+.ProseMirror pre {
+  @apply overflow-x-auto rounded-lg border bg-[hsl(224_35%_5%)] p-4 font-mono text-sm leading-relaxed text-slate-200;
+}
+.ProseMirror pre code {
+  @apply bg-transparent p-0 text-inherit;
+}
+.ProseMirror hr {
+  @apply my-6 border-border;
+}
+.ProseMirror ul[data-type="taskList"] {
+  @apply list-none pl-1;
+}
+.ProseMirror ul[data-type="taskList"] li {
+  @apply flex items-start gap-2;
+}
+.ProseMirror ul[data-type="taskList"] li > label {
+  @apply mt-1 select-none;
+}
+.ProseMirror ul[data-type="taskList"] li > div {
+  @apply flex-1;
+}
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+  @apply text-muted-foreground line-through;
+}
+.ProseMirror table {
+  @apply my-4 w-full border-collapse overflow-hidden text-sm;
+  table-layout: fixed;
+}
+.ProseMirror th,
+.ProseMirror td {
+  @apply relative border px-3 py-2 align-top;
+}
+.ProseMirror th {
+  @apply bg-muted text-left font-semibold;
+}
+.ProseMirror .selectedCell::after {
+  content: "";
+  @apply pointer-events-none absolute inset-0 bg-primary/15;
+}
+.ProseMirror .column-resize-handle {
+  @apply absolute -right-0.5 bottom-0 top-0 w-1 bg-primary;
+}
+.ProseMirror div[data-type="callout"] {
+  @apply rounded-lg border-l-4 px-4 py-3;
+}
+.ProseMirror div[data-type="callout"][data-tone="info"] {
+  @apply border-sky-500 bg-sky-500/10;
+}
+.ProseMirror div[data-type="callout"][data-tone="warning"] {
+  @apply border-amber-500 bg-amber-500/10;
+}
+.ProseMirror div[data-type="callout"][data-tone="tip"] {
+  @apply border-emerald-500 bg-emerald-500/10;
+}
+
+/* Syntax highlighting (lowlight / highlight.js classes) */
+.hljs-comment, .hljs-quote { color: #6b7a90; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #c792ea; }
+.hljs-string, .hljs-attr-value, .hljs-template-tag { color: #c3e88d; }
+.hljs-number, .hljs-built_in, .hljs-type { color: #f78c6c; }
+.hljs-title, .hljs-function .hljs-title, .hljs-section { color: #82aaff; }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-property { color: #ffcb6b; }
+.hljs-meta, .hljs-symbol { color: #89ddff; }
+.hljs-deletion { color: #ff5370; }
+.hljs-addition { color: #c3e88d; }
